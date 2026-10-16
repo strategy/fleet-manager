@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FleetManager</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 16px; background: #f5f3ee; color: #18212b; }
+    h1 { margin-bottom: 4px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd7ca; vertical-align: middle; }
+    code { background: #eae6dd; padding: 2px 6px; border-radius: 4px; }
+    button, a.button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid #18212b; background: #fff; color: #18212b; cursor: pointer; text-decoration: none; }
+    .toolbar-actions { display: flex; gap: 8px; }
+    button.primary { background: #18212b; color: #fff; }
+    button.danger { border-color: #9a3412; color: #9a3412; }
+    td.actions { display: flex; gap: 8px; }
+    .badge { display: inline-flex; width: 26px; height: 26px; border-radius: 4px; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+    .badge.parked { background: #2563eb; }
+    .badge.en_route { background: #f08a24; }
+    .badge.arrived { background: #16a34a; }
+    .legend { display: flex; gap: 20px; font-size: 14px; color: #4a5562; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend .badge { width: 18px; height: 18px; font-size: 12px; }
+    dialog { border: none; border-radius: 12px; padding: 24px; min-width: 320px; }
+    dialog form { display: flex; flex-direction: column; gap: 12px; }
+    dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+    dialog input, dialog select { font: inherit; padding: 6px 8px; }
+    dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 8px 0 0; }
+    .error { color: #9a3412; min-height: 1em; margin: 0; }
+    .empty { color: #4a5562; }
+  </style>
+</head>
+<body>
+  <h1>Hello World, FleetManager!</h1>
+  <p>frontend (nginx) → <code>/api</code> → api (Node.js) → db (PostgreSQL) + redis ← worker (GPS)</p>
+
+  <div class="toolbar">
+    <h2>Vehicule</h2>
+    <div class="toolbar-actions">
+      <a class="button" href="/map.html" target="_blank" rel="noopener">Hartă</a>
+      <button class="primary" id="add-car">Add car</button>
+    </div>
+  </div>
+  <div class="legend">
+    <span><span class="badge parked">P</span> în parcare</span>
+    <span><span class="badge en_route">➜</span> în cursă</span>
+    <span><span class="badge arrived">✓</span> a ajuns</span>
+  </div>
+  <table>
+    <thead><tr><th>Stare</th><th>Număr</th><th>Model</th><th>Destinație</th><th>Poziție GPS</th><th>Acțiuni</th></tr></thead>
+    <tbody id="vehicles"></tbody>
+  </table>
+
+  <h2>Ultimele poziții GPS</h2>
+  <table>
+    <thead><tr><th>Număr</th><th>Destinație</th><th>Lat</th><th>Lng</th><th>Ora</th></tr></thead>
+    <tbody id="positions"></tbody>
+  </table>
+
+  <dialog id="car-dialog">
+    <form method="dialog" id="car-form">
+      <h3>Mașină nouă</h3>
+      <label>Număr de înmatriculare <input name="plate" required maxlength="20" placeholder="BH-01-FLT"></label>
+      <label>Model <input name="model" value="Dacia Logan"></label>
+      <label>Locație inițială <input value="Parcare Oradea" disabled></label>
+      <p class="error" id="car-error"></p>
+      <menu>
+        <button type="button" data-close>Renunță</button>
+        <button type="submit" class="primary">Adaugă</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="trip-dialog">
+    <form method="dialog" id="trip-form">
+      <h3>Trimite cursa: <span id="trip-plate"></span></h3>
+      <label>Plecare <input value="Parcare Oradea" disabled></label>
+      <label>Destinație <select name="city" id="city-select" required></select></label>
+      <p class="error" id="trip-error"></p>
+      <menu>
+        <button type="button" data-close>Renunță</button>
+        <button type="submit" class="primary">Trimite</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script>
+    const STATUS = {
+      parked: { icon: "P", label: "În parcare" },
+      en_route: { icon: "➜", label: "În cursă" },
+      arrived: { icon: "✓", label: "A ajuns la destinație" },
+    };
+
+    // Construim celulele cu textContent: numerele introduse de utilizator nu devin HTML.
+    function cell(content) {
+      const td = document.createElement("td");
+      if (content instanceof Node) td.append(content); else td.textContent = content;
+      return td;
+    }
+
+    function button(text, className, onClick) {
+      const b = document.createElement("button");
+      b.textContent = text;
+      if (className) b.className = className;
+      b.addEventListener("click", onClick);
+      return b;
+    }
+
+    async function api(method, url, body) {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Eroare " + res.status);
+      }
+      return res.status === 204 ? null : res.json();
+    }
+
+    function renderVehicles(vehicles) {
+      const tbody = document.getElementById("vehicles");
+      tbody.replaceChildren();
+      if (vehicles.length === 0) {
+        const td = cell("Nicio mașină. Apăsați „Add car” pentru a adăuga una în parcarea din Oradea.");
+        td.colSpan = 6;
+        td.className = "empty";
+        tbody.append(document.createElement("tr"));
+        tbody.lastChild.append(td);
+        return;
+      }
+      for (const v of vehicles) {
+        const badge = document.createElement("span");
+        badge.className = "badge " + v.status;
+        badge.textContent = STATUS[v.status].icon;
+        badge.title = STATUS[v.status].label;
+
+        const actions = document.createElement("td");
+        actions.className = "actions";
+        if (v.status === "parked") {
+          actions.append(button("Trimite cursa", "", () => openTrip(v.plate)));
+        } else {
+          actions.append(button("Trimite parcare", "", () => park(v.plate)));
+        }
+        actions.append(button("Delete", "danger", () => removeCar(v.plate)));
+
+        const tr = document.createElement("tr");
+        tr.append(
+          cell(badge),
+          cell(v.plate),
+          cell(v.model),
+          cell(v.status === "parked" ? "Parcare" : v.destination),
+          cell(v.lat.toFixed(4) + ", " + v.lng.toFixed(4)),
+          actions,
+        );
+        tbody.append(tr);
+      }
+    }
+
+    function renderPositions(positions) {
+      const tbody = document.getElementById("positions");
+      tbody.replaceChildren();
+      for (const p of positions) {
+        const tr = document.createElement("tr");
+        tr.append(
+          cell(p.plate),
+          cell(p.destination),
+          cell(p.lat.toFixed(5)),
+          cell(p.lng.toFixed(5)),
+          cell(new Date(p.at).toLocaleTimeString("ro-RO")),
+        );
+        tbody.append(tr);
+      }
+    }
+
+    async function load() {
+      try {
+        renderVehicles(await api("GET", "/api/vehicles"));
+        renderPositions(await api("GET", "/api/positions"));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function park(plate) {
+      await api("POST", "/api/vehicles/" + encodeURIComponent(plate) + "/park").catch((e) => alert(e.message));
+      load();
+    }
+
+    async function removeCar(plate) {
+      if (!confirm("Ștergeți mașina " + plate + "?")) return;
+      await api("DELETE", "/api/vehicles/" + encodeURIComponent(plate)).catch((e) => alert(e.message));
+      load();
+    }
+
+    // --- formularul "Add car" ---
+    const carDialog = document.getElementById("car-dialog");
+    const carForm = document.getElementById("car-form");
+    document.getElementById("add-car").addEventListener("click", () => {
+      carForm.reset();
+      document.getElementById("car-error").textContent = "";
+      carDialog.showModal();
+    });
+    carForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(carForm);
+      try {
+        await api("POST", "/api/vehicles", { plate: data.get("plate"), model: data.get("model") });
+        carDialog.close();
+        load();
+      } catch (e) {
+        document.getElementById("car-error").textContent = e.message;
+      }
+    });
+
+    // --- formularul "Trimite cursa" ---
+    const tripDialog = document.getElementById("trip-dialog");
+    const tripForm = document.getElementById("trip-form");
+    let tripPlate = null;
+    function openTrip(plate) {
+      tripPlate = plate;
+      document.getElementById("trip-plate").textContent = plate;
+      document.getElementById("trip-error").textContent = "";
+      tripDialog.showModal();
+    }
+    tripForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const city = new FormData(tripForm).get("city");
+      try {
+        await api("POST", "/api/vehicles/" + encodeURIComponent(tripPlate) + "/trip", { city });
+        tripDialog.close();
+        load();
+      } catch (e) {
+        document.getElementById("trip-error").textContent = e.message;
+      }
+    });
+
+    for (const b of document.querySelectorAll("[data-close]")) {
+      b.addEventListener("click", () => b.closest("dialog").close());
+    }
+
+    async function loadCities() {
+      const select = document.getElementById("city-select");
+      for (const city of await api("GET", "/api/cities")) {
+        select.append(new Option(city, city));
+      }
+    }
+
+    loadCities();
+    load();
+    setInterval(load, 3000);
+  </script>
+</body>
+</html>

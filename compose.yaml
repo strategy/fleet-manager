@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: fleet
+      POSTGRES_USER: fleet
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U fleet
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+
+  api:
+    build: ./api
+    env_file: .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build: ./api
+    command: ["node", "dist/worker.js"]
+    healthcheck:
+      disable: true
+    env_file: .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+    depends_on: [db, redis]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on: [api]
+volumes:
+  pgdata:
