@@ -155,7 +155,8 @@ fleet-manager/
 ├── compose.yaml               # toată aplicația
 ├── compose.override.yaml      # ajustări doar pentru local
 ├── .env.example               # model pentru .env
-└── .gitignore
+├── .gitignore
+└── LICENSE                    # MIT
 ```
 
 ## Probleme frecvente
@@ -167,3 +168,7 @@ fleet-manager/
 | Mașinile merg foarte încet | `SIM_SPEEDUP` e 1. Setați-l în `.env` și rulați `docker compose up -d`. |
 | Harta e goală | Harta încarcă Leaflet și imaginile OpenStreetMap de pe internet. |
 | Swagger „Try it out” nu răspunde | `servers` din `openapi.ts` indică `http://localhost:3000`. Pe altă adresă sau alt port, actualizați valoarea. |
+
+## Licență
+
+[MIT](LICENSE): codul poate fi folosit, modificat și redistribuit liber, cu păstrarea notei de copyright.
