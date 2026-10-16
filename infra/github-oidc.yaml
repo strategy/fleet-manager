@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Acces GitHub Actions → AWS fără chei permanente (OIDC). Se instalează O SINGURĂ DATĂ
+  în contul AWS, de mână, de către cine administrează contul (vezi DEPLOY.md, pasul 3).
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Description: Repository-ul GitHub, sub forma utilizator/repo (ex. strategy/fleet-manager)
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: '"false" dacă în cont există deja providerul token.actions.githubusercontent.com'
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  # AWS acceptă token-urile semnate de GitHub Actions.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  # Rolul pe care îl preia workflow-ul de deploy.
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # numele NU începe cu fleet-manager-, ca rolul să nu își poată modifica singur drepturile
+      RoleName: github-deploy-fleet-manager
+      Description: Deploy FleetManager din GitHub Actions (doar environment-ul production)
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # doar job-urile care rulează în environment-ul "production" al acestui repo;
+                # un branch oarecare sau un PR nu poate prelua rolul
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:environment:production"
+      ManagedPolicyArns:
+        # Lambda, DynamoDB, S3, CloudFormation, EventBridge, CloudWatch Logs; fără IAM
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        # SAM creează câte un rol IAM pentru fiecare funcție Lambda: le permitem doar
+        # pe cele cu numele stack-ului (fleet-manager-...)
+        - PolicyName: manage-fleet-manager-roles
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/fleet-manager-*"
+              # rolurile pot fi date doar funcțiilor Lambda
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/fleet-manager-*"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+
+Outputs:
+  DeployRoleArn:
+    Description: Se pune în GitHub ca variabila AWS_DEPLOY_ROLE_ARN (environment production)
+    Value: !GetAtt DeployRole.Arn

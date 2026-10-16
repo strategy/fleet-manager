@@ -1,0 +1,8 @@
+# Se aplică automat peste compose.yaml, doar pentru dezvoltare locală.
+services:
+  dynamodb:
+    # acces din terminal: aws dynamodb list-tables --endpoint-url http://localhost:8000
+    ports: ["8000:8000"]
+  api:
+    environment:
+      LOG_LEVEL: debug

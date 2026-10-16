@@ -1,0 +1,31 @@
+# Configurația AWS SAM, câte o secțiune pentru fiecare mediu.
+# Mediul se alege cu --config-env:
+#   lstk sam deploy --config-env localstack     (LocalStack, pe calculatorul vostru)
+#   sam deploy --config-env production          (AWS, doar din GitHub Actions, la merge în master)
+# De obicei nu rulați comenzile de mai sus direct, ci `npm run deploy:localstack` (vezi scripts/deploy.mjs).
+version = 0.1
+
+# ---- LocalStack ----
+[localstack.global.parameters]
+stack_name = "fleet-manager"
+region = "us-east-1"
+
+[localstack.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+confirm_changeset = false
+fail_on_empty_changeset = false
+parameter_overrides = "Environment=localstack SimSpeedup=60 LogLevel=debug GpsPollSeconds=1"
+
+# ---- producție (AWS) ----
+[production.global.parameters]
+stack_name = "fleet-manager"
+region = "eu-central-1"
+
+[production.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+confirm_changeset = false
+fail_on_empty_changeset = false
+parameter_overrides = "Environment=production SimSpeedup=60 LogLevel=info GpsPollSeconds=60"
+tags = "app=fleet-manager environment=production"

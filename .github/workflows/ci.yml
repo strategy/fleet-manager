@@ -1,0 +1,73 @@
+name: CI/CD FleetManager
+
+# Fluxul de lucru:
+#   branch propriu → push → Pull Request către master: rulează doar job-ul `test`
+#   merge în master: rulează `test`, apoi `deploy` în producție (AWS)
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # un push nou pe același PR oprește verificarea veche
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run bundle
+      # verifică template.yaml înainte să ajungă în producție
+      - uses: aws-actions/setup-sam@v3
+        with:
+          use-installer: true
+      - run: sam validate --lint --template ../template.yaml --region eu-central-1
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # environment-ul GitHub "production": aici stă AWS_DEPLOY_ROLE_ARN și tot aici
+    # se pot cere aprobări înainte de deploy (Settings → Environments)
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.website }}
+    # două merge-uri la rând nu fac deploy în paralel; al doilea așteaptă
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # token-ul OIDC cu care GitHub se autentifică în AWS
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - uses: aws-actions/setup-sam@v3
+        with:
+          use-installer: true
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-central-1
+      - id: deploy
+        run: npm run deploy:production

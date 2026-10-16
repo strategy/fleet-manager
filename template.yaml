@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  FleetManager pe AWS: API și worker în Lambda, date în DynamoDB, frontend în S3.
+  Același fișier se folosește pentru LocalStack și pentru producție (vezi samconfig.toml).
+
+# Valorile diferite între medii vin din samconfig.toml (parameter_overrides).
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [localstack, production]
+    Description: Mediul în care rulează stack-ul
+  SimSpeedup:
+    Type: Number
+    Default: 60
+    Description: 1 = timp real; 60 = un minut de demo înseamnă o oră de drum
+  LogLevel:
+    Type: String
+    Default: info
+  GpsPollSeconds:
+    Type: Number
+    Default: 60
+    MinValue: 1
+    MaxValue: 60
+    Description: La câte secunde trimite worker-ul poziții GPS (60 = un pas pe minut)
+
+# Setări comune tuturor funcțiilor Lambda.
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    MemorySize: 256
+    Timeout: 15
+    Environment:
+      Variables:
+        VEHICLES_TABLE: !Ref VehiclesTable
+        POSITIONS_TABLE: !Ref PositionsTable
+        SIM_SPEEDUP: !Ref SimSpeedup
+        LOG_LEVEL: !Ref LogLevel
+        GPS_POLL_SECONDS: !Ref GpsPollSeconds
+    # etichete vizibile în consola AWS și în factură
+    Tags:
+      app: fleet-manager
+      environment: !Ref Environment
+
+Resources:
+  # ---- date ----
+  VehiclesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: plate, AttributeType: S }
+      KeySchema:
+        - { AttributeName: plate, KeyType: HASH }
+
+  PositionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: plate, AttributeType: S }
+        - { AttributeName: at, AttributeType: S }
+      KeySchema:
+        - { AttributeName: plate, KeyType: HASH }
+        - { AttributeName: at, KeyType: RANGE }
+      # pozițiile mai vechi de o oră se șterg singure (atributul expiresAt)
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  # ---- API: Express în Lambda, cu adresă HTTPS publică (Function URL) ----
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      # pachetul construit de `npm run bundle` (esbuild): build/lambda.js și build/worker-lambda.js
+      CodeUri: api/build/
+      Handler: lambda.handler
+      Description: FleetManager API (Express prin serverless-http)
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref VehiclesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PositionsTable }
+      FunctionUrlConfig:
+        AuthType: NONE
+        # frontend-ul din S3 are altă adresă decât API-ul, deci browserul cere CORS
+        Cors:
+          AllowOrigins: ["*"]
+          AllowMethods: ["*"]
+          AllowHeaders: [content-type]
+
+  # Din octombrie 2025, un Function URL public cere și lambda:InvokeFunction,
+  # limitat la apelurile venite prin URL.
+  ApiFunctionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  # ---- worker: simularea GPS, pornită de EventBridge o dată pe minut ----
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/build/
+      Handler: worker-lambda.handler
+      Description: FleetManager worker (mută mașinile aflate în cursă)
+      # rulează până la 59 de secunde când GPS_POLL_SECONDS e sub 60 (vezi worker-lambda.ts)
+      Timeout: 70
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref VehiclesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PositionsTable }
+      Events:
+        EveryMinute:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+
+  # ---- frontend: fișiere statice într-un bucket S3 cu website public ----
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      WebsiteConfiguration:
+        IndexDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+
+# Valorile de care are nevoie scripts/deploy.mjs (și pe care le afișează la final).
+Outputs:
+  ApiUrl:
+    Description: Adresa API-ului (Swagger UI pe /docs)
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
+  FrontendBucketName:
+    Description: Bucket-ul în care se urcă frontend-ul
+    Value: !Ref FrontendBucket
+  WebsiteUrl:
+    Description: Adresa aplicației web
+    Value: !GetAtt FrontendBucket.WebsiteURL

@@ -1,0 +1,10 @@
+{
+  "name": "fleet-manager",
+  "private": true,
+  "description": "Comenzile de deploy. Codul aplicației e în api/ și frontend/.",
+  "scripts": {
+    "deploy:localstack": "node scripts/deploy.mjs localstack",
+    "deploy:localstack:docker": "node scripts/deploy.mjs localstack --docker",
+    "deploy:production": "node scripts/deploy.mjs production"
+  }
+}

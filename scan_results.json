@@ -1,0 +1,39 @@
+{
+    "Items": [
+        {
+            "createdAt": {
+                "S": "2026-10-22T15:46:09.104Z"
+            },
+            "destLat": {
+                "N": "45.4353"
+            },
+            "destLng": {
+                "N": "28.008"
+            },
+            "destination": {
+                "S": "Galați"
+            },
+            "lat": {
+                "N": "45.4353"
+            },
+            "lng": {
+                "N": "28.008"
+            },
+            "model": {
+                "S": "Dacia Logan"
+            },
+            "plate": {
+                "S": "BH-01-ABC"
+            },
+            "status": {
+                "S": "arrived"
+            },
+            "updatedAt": {
+                "S": "2026-10-22T15:52:36.649Z"
+            }
+        }
+    ],
+    "Count": 1,
+    "ScannedCount": 1,
+    "ConsumedCapacity": null
+}

@@ -1,0 +1,71 @@
+services:
+  # Mediul local: DynamoDB Local ține locul tabelelor DynamoDB din AWS.
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.1
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    # imaginea rulează ca utilizator fără drepturi de scriere pe volumul nou creat
+    user: root
+    volumes:
+      - dynamodata:/home/dynamodblocal/data
+    healthcheck:
+      # orice răspuns HTTP înseamnă că DynamoDB Local ascultă
+      test: curl -s -o /dev/null localhost:8000
+      interval: 3s
+      retries: 10
+
+  api:
+    build: ./api
+    env_file: .env
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      # DynamoDB Local acceptă orice credențiale, dar SDK-ul cere să existe
+      AWS_REGION: eu-central-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    ports:
+      - "3000:3000"
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./api
+    command: ["node", "dist/worker.js"]
+    healthcheck:
+      disable: true
+    env_file: .env
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      AWS_REGION: eu-central-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on: [api]
+
+  # LocalStack pornit cu Docker Compose, alternativa la `lstk` (metoda B din README).
+  # Pornește doar cu profilul lui: docker compose --profile localstack up -d localstack
+  # Folosiți ori lstk, ori acest serviciu, niciodată pe amândouă deodată: ambele vor portul 4566.
+  localstack:
+    profiles: [localstack]
+    image: localstack/localstack:2026.10.1
+    ports:
+      - "127.0.0.1:4566:4566"            # toate serviciile AWS emulate
+      - "127.0.0.1:4510-4559:4510-4559"  # porturi folosite de unele servicii
+    # token-ul stă într-un fișier separat, ca să nu ajungă în containerele api și worker
+    env_file:
+      - path: .env.localstack
+        required: false
+    volumes:
+      # LocalStack rulează fiecare funcție Lambda într-un container separat
+      - /var/run/docker.sock:/var/run/docker.sock
+volumes:
+  dynamodata:
