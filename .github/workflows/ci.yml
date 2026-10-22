@@ -2,7 +2,7 @@ name: CI FleetManager
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
     paths: ["api/**", ".github/workflows/**"]
 
@@ -45,7 +45,7 @@ jobs:
 
   build:
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -58,5 +58,5 @@ jobs:
         with:
           context: ./api
           push: true
-          # înlocuiți fleet-team cu utilizatorul/organizația voastră (litere mici)
-          tags: ghcr.io/fleet-team/api:${{ github.sha }}
+          # înlocuiți in ghcr.io/fleet-team/api `fleet-team` cu utilizatorul/organizația voastră (litere mici)
+          tags: ghcr.io/strategy/api:${{ github.sha }}
