@@ -1,5 +1,8 @@
 # FleetManager
 
+[![hits](https://hits.dwyl.com/strategy/fleet-manager.svg?style=flat-square)](http://hits.dwyl.com/strategy/fleet-manager)
+[![unique](https://hits.dwyl.com/strategy/fleet-manager.svg?style=flat-square&show=unique)](http://hits.dwyl.com/strategy/fleet-manager)
+
 Aplicație demo de management al flotei auto, folosită în cursul **Fișiere de configurare** (Dockerfile, docker-compose, GitHub Actions).
 
 Mașinile sunt adăugate din interfața web și stau în parcarea din Oradea. Trimise în cursă spre o reședință de județ, ele merg în linie dreaptă cu 90 km/h, iar worker-ul trimite pozițiile GPS în timp real. Pozițiile se văd în tabel și pe hartă.
