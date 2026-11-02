@@ -12,7 +12,7 @@
 import { spawnSync } from "node:child_process";
 import { appendFileSync, copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -64,18 +64,21 @@ const gpsPollSeconds = Number(samconfig("parameter_overrides", "deploy").match(/
 const refreshMs = Math.min(gpsPollSeconds, 3) * 1000;
 
 function run([command, ...args], { cwd = root, capture = false } = {}) {
-  console.log(`\n> ${[command, ...args].join(" ")}`);
   // Pe Windows, npm, lstk și sam sunt fișiere .cmd: rulează doar prin shell.
   const shell = process.platform === "win32";
-  const quoted = shell ? args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)) : args;
-  const result = spawnSync(command, quoted, {
+  const quoted = args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a));
+  // Comanda completă, cu ghilimele, plus folderul în care rulează, ca să poată fi repetată de mână.
+  const full = [command, ...quoted].join(" ");
+  const where = relative(root, cwd);
+  console.log(`\n> ${full}${where ? `   (în folderul ${where}/)` : ""}`);
+  const result = spawnSync(command, shell ? quoted : args, {
     cwd,
     shell,
     stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit",
     encoding: "utf8",
   });
   if (result.error || result.status !== 0) {
-    console.error(`\nComanda a eșuat: ${command} ${args.join(" ")}`);
+    console.error(`\nComanda a eșuat: ${full}`);
     if (result.error?.code === "ENOENT") console.error(`Nu găsesc „${command}”. E instalat și în PATH?`);
     process.exit(result.status || 1);
   }
@@ -83,6 +86,14 @@ function run([command, ...args], { cwd = root, capture = false } = {}) {
 }
 
 console.log(`=== Deploy FleetManager → ${env}${viaDocker ? " (docker compose)" : ""} (stack ${stackName}, regiunea ${region}) ===`);
+console.log(`Comanda: node scripts/deploy.mjs ${process.argv.slice(2).join(" ")}`);
+if (viaDocker) {
+  // Metoda B: comenzile sam și aws de mai jos rulează cu aceste variabile setate.
+  console.log(
+    `Variabile pentru sam și aws: AWS_ENDPOINT_URL=${process.env.AWS_ENDPOINT_URL} ` +
+      "AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test",
+  );
+}
 
 // 1. build
 const api = join(root, "api");
