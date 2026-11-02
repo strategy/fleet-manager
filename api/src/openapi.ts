@@ -1,5 +1,5 @@
 // Specificația OpenAPI 3 a API-ului FleetManager, afișată cu Swagger UI pe /docs.
-// Când adăugați sau modificați o rută în server.ts, actualizați și acest fișier.
+// Când adăugați sau modificați o rută în app.ts, actualizați și acest fișier.
 
 const plateParam = {
   name: "plate",

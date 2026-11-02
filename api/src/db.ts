@@ -1,9 +1,4 @@
-import {
-  ConditionalCheckFailedException,
-  CreateTableCommand,
-  DynamoDBClient,
-  ResourceInUseException,
-} from "@aws-sdk/client-dynamodb";
+import { ConditionalCheckFailedException, DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   BatchWriteCommand,
   DeleteCommand,
@@ -44,8 +39,9 @@ export interface Position {
 // Pozițiile GPS expiră singure după o oră (TTL în DynamoDB).
 const POSITION_TTL_SECONDS = 3600;
 
-const { vehiclesTable, positionsTable, endpoint } = config.dynamodb;
-const db = DynamoDBDocumentClient.from(new DynamoDBClient({ endpoint }), {
+// Adresa DynamoDB o alege SDK-ul: în LocalStack din AWS_ENDPOINT_URL, pus de LocalStack în Lambda.
+const { vehiclesTable, positionsTable } = config.dynamodb;
+const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
 
@@ -237,33 +233,4 @@ export async function latestPositions(limit: number): Promise<Position[]> {
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, limit)
     .map(({ expiresAt: _expiresAt, ...position }) => position);
-}
-
-// Doar local (DynamoDB Local): în AWS și LocalStack tabelele le creează template.yaml.
-export async function createTablesIfMissing(): Promise<void> {
-  const tables = [
-    { TableName: vehiclesTable, keys: [{ name: "plate", type: "HASH" as const }] },
-    {
-      TableName: positionsTable,
-      keys: [
-        { name: "plate", type: "HASH" as const },
-        { name: "at", type: "RANGE" as const },
-      ],
-    },
-  ];
-  for (const { TableName, keys } of tables) {
-    try {
-      await db.send(
-        new CreateTableCommand({
-          TableName,
-          BillingMode: "PAY_PER_REQUEST",
-          KeySchema: keys.map((k) => ({ AttributeName: k.name, KeyType: k.type })),
-          AttributeDefinitions: keys.map((k) => ({ AttributeName: k.name, AttributeType: "S" })),
-        }),
-      );
-      console.log(`[db] tabel creat: ${TableName}`);
-    } catch (err) {
-      if (!(err instanceof ResourceInUseException)) throw err;
-    }
-  }
 }

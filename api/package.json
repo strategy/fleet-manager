@@ -6,7 +6,6 @@
     "build": "tsc",
     "lint": "tsc --noEmit",
     "test": "tsc && node --test \"dist/**/*.test.js\"",
-    "start": "node dist/server.js",
     "bundle": "esbuild src/lambda.ts src/worker-lambda.ts --bundle --platform=node --target=node22 --outdir=build --log-level=warning"
   },
   "dependencies": {

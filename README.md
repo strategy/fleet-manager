@@ -1,6 +1,6 @@
 # FleetManager
 
-Aplicație demo de management al flotei auto, folosită în cursul **Fișiere de configurare** (Dockerfile, docker-compose, GitHub Actions) și, pe acest branch (`localstack`), pentru drumul codului **de la calculatorul vostru până în AWS**.
+Aplicație demo de management al flotei auto, folosită în cursul **Fișiere de configurare** (Dockerfile, docker-compose, GitHub Actions; Dockerfile-urile aplicației sunt pe `master`) și, pe acest branch (`localstack`), pentru drumul codului **de la calculatorul vostru până în AWS**.
 
 Mașinile sunt adăugate din interfața web și stau în parcarea din Oradea. Trimise în cursă spre o reședință de județ, ele merg în linie dreaptă cu 90 km/h, iar worker-ul trimite pozițiile GPS. Pozițiile se văd în tabel și pe hartă.
 
@@ -120,13 +120,13 @@ LocalStack emulează AWS pe calculatorul vostru. Emulatorul e mereu aceeași ima
 
 | | Metoda A: `lstk` | Metoda B: `docker compose` |
 |---|---|---|
-| Cine pornește containerul | `lstk` | serviciul `localstack` din `compose.yaml` |
+| Cine pornește containerul | `lstk` | `docker compose up -d` (`compose.yaml` are doar serviciul `localstack`) |
 | Autentificare | login în browser, o singură dată | token în fișierul `.env.localstack` |
 | Comenzi către LocalStack | `lstk aws ...`, `lstk sam ...` | `aws ...`, `sam ...` cu `AWS_ENDPOINT_URL` setat |
 | Deploy | `npm run deploy:localstack` | `npm run deploy:localstack:docker` |
 | Recomandat pentru | lucrul de zi cu zi | a vedea cum e configurat LocalStack; CI |
 
-> ⚠️ **Folosiți ori metoda A, ori metoda B, niciodată pe amândouă deodată.** Ambele pornesc un container LocalStack pe portul 4566. Al doilea nu poate porni, sau comenzile ajung la alt emulator decât credeți. Înainte să schimbați metoda, opriți-o pe cea veche: `lstk stop` pentru A, `docker compose stop localstack` pentru B.
+> ⚠️ **Folosiți ori metoda A, ori metoda B, niciodată pe amândouă deodată.** Ambele pornesc un container LocalStack pe portul 4566. Al doilea nu poate porni, sau comenzile ajung la alt emulator decât credeți. Înainte să schimbați metoda, opriți-o pe cea veche: `lstk stop` pentru A, `docker compose stop` pentru B.
 >
 > Datele din LocalStack nu se păstrează la oprire: stack-ul, mașinile și pozițiile GPS dispar. După fiecare pornire, rulați din nou deploy-ul.
 
@@ -166,18 +166,18 @@ open -e .env.localstack
 Pornire și deploy:
 
 ```bash
-docker compose --profile localstack up -d localstack     # pornește doar LocalStack
+docker compose up -d                                     # pornește containerul LocalStack
 curl http://localhost:4566/_localstack/health            # serviciile trebuie să fie „available”/„running”
 npm run deploy:localstack:docker                         # build + sam deploy + frontend în S3
 ```
 
-Fără `--profile localstack`, serviciul nu pornește. Comanda de mai sus pornește **doar** containerul LocalStack; aplicația propriu-zisă rulează în LocalStack, ca funcții Lambda.
+`docker compose up -d` pornește **doar** containerul LocalStack: nu construiește imagini și nu pornește alte containere. Aplicația propriu-zisă rulează în LocalStack, ca funcții Lambda.
 
 Oprire și loguri:
 
 ```bash
 docker compose logs -f localstack       # logurile LocalStack
-docker compose stop localstack          # oprește LocalStack
+docker compose stop                     # oprește LocalStack
 ```
 
 ### Adresele aplicației
@@ -332,7 +332,7 @@ Când adăugați o rută în `api/src/app.ts`, actualizați și `api/src/openapi
 
 ## Configurare
 
-Valorile vin din `template.yaml`, cu valorile pe mediu din `samconfig.toml` (secțiunile `[localstack...]` și `[production...]`). În LocalStack nu se folosește `.env`.
+Valorile vin din `template.yaml`, cu valorile pe mediu din `samconfig.toml` (secțiunile `[localstack...]` și `[production...]`).
 
 | Variabilă | Implicit | Descriere |
 |---|---|---|
@@ -359,7 +359,6 @@ Codul API-ului și al worker-ului e în TypeScript, în `api/src/`:
 | `cities.ts` | Reședințele de județ și coordonatele lor |
 | `config.ts` | Citirea variabilelor de mediu |
 | `openapi.ts` | Specificația OpenAPI |
-| `server.ts`, `worker.ts` | Pornirea fără Lambda (vezi [Fără LocalStack](#fără-localstack-docker-compose)) |
 
 Ciclul de lucru:
 
@@ -383,18 +382,6 @@ Verificarea șablonului, ca în CI:
 sam validate --lint
 ```
 
-### Fără LocalStack: docker compose
-
-`compose.yaml` are încă serviciile `api`, `worker`, `frontend` și `dynamodb` (DynamoDB Local), pentru cazul în care vreți să rulați codul fără AWS emulat (de exemplu fără cont LocalStack):
-
-```bash
-cp .env.example .env          # pe Windows: copy .env.example .env
-docker compose up -d --build  # http://localhost:8080, API pe http://localhost:3000
-docker compose down           # oprire
-```
-
-Varianta aceasta nu verifică `template.yaml`, Lambda, S3 sau EventBridge. Înainte de un Pull Request, verificați modificarea în LocalStack.
-
 ## CI/CD
 
 `.github/workflows/ci.yml`:
@@ -411,12 +398,9 @@ fleet-manager/
 ├── .github/workflows/ci.yml   # GitHub Actions: test la PR, deploy la merge în master
 ├── api/
 │   ├── src/                   # API, worker, teste
-│   ├── Dockerfile             # imaginea pentru docker compose (fără LocalStack)
 │   ├── package.json           # scripturi: lint, test, bundle
 │   └── tsconfig.json
 ├── frontend/
-│   ├── Dockerfile             # nginx + fișiere statice (docker compose)
-│   ├── nginx.conf             # proxy /api → serviciul api (docker compose)
 │   ├── config.js              # adresa API-ului (rescrisă la deploy)
 │   ├── index.html             # interfața principală
 │   └── map.html               # harta (Leaflet + OpenStreetMap)
@@ -427,11 +411,9 @@ fleet-manager/
 ├── template.yaml              # infrastructura AWS (SAM): Lambda, DynamoDB, S3, EventBridge
 ├── samconfig.toml             # setările pe mediu: localstack, production
 ├── package.json               # npm run deploy:localstack[:docker] / deploy:production
-├── compose.yaml               # serviciul localstack (metoda B) + varianta fără LocalStack
-├── compose.override.yaml      # ajustări pentru varianta fără LocalStack
+├── compose.yaml               # doar LocalStack (metoda B)
 ├── DEPLOY.md                  # fluxul de la LocalStack la producție
 ├── .env.localstack.example    # model pentru .env.localstack (token LocalStack, metoda B)
-├── .env.example               # model pentru .env (doar varianta fără LocalStack)
 └── LICENSE                    # MIT
 ```
 
@@ -441,7 +423,7 @@ fleet-manager/
 |---|---|
 | `port is already allocated` pe 4566 | LocalStack rulează deja, pornit prin cealaltă metodă. Opriți-l (`lstk stop` sau `docker compose stop localstack`) și folosiți o singură metodă. |
 | `lstk` nu pornește sau cere login | Rulați `lstk` fără argumente pentru login. Docker Desktop trebuie să fie pornit. |
-| Metoda B: `LocalStack nu răspunde la .../_localstack/health` | Containerul nu e pornit sau token-ul din `.env.localstack` lipsește. Vedeți `docker compose logs localstack`. |
+| Metoda B: `LocalStack nu răspunde la .../_localstack/health` | Containerul nu e pornit (`docker compose up -d`) sau token-ul din `.env.localstack` lipsește. Vedeți `docker compose logs localstack`. |
 | Stack-ul `fleet-manager` nu există / pagina nu se mai deschide | LocalStack a fost oprit și datele s-au pierdut. Rulați din nou deploy-ul. |
 | Pagina se încarcă, dar tabelul arată „API indisponibil” | `config.js` nu are adresa API-ului. Rulați din nou deploy-ul și verificați adresa API afișată la final. |
 | Nicio poziție GPS în primul minut | EventBridge pornește worker-ul o dată pe minut. Imediat după deploy, așteptați până la un minut. |

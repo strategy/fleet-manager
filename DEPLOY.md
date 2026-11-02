@@ -1,34 +1,34 @@
-# De la local la producție
+# De la LocalStack la producție
 
 Cum ajunge o modificare de pe calculatorul vostru în AWS, pas cu pas. Comenzile sunt date pentru **Windows (cmd)** și **macOS (Terminal)**. Unde nu diferă, apar o singură dată.
 
-## Cele trei medii
+## Cele două medii
 
 | Mediu | Unde rulează | Ce rulează | Cine îl pornește | Comanda |
 |---|---|---|---|---|
-| **local** | calculatorul vostru, în Docker | Express + DynamoDB Local + nginx | voi | `docker compose up -d --build` |
-| **localstack** | calculatorul vostru, AWS emulat | Lambda + DynamoDB + S3 + EventBridge, ca în AWS | voi | `npm run deploy:localstack` (lstk) sau `npm run deploy:localstack:docker` (docker compose) |
+| **localstack** | calculatorul vostru, AWS emulat | Lambda + DynamoDB + S3 + EventBridge, ca în AWS | voi | `npm run deploy:localstack` (metoda A, lstk) sau `npm run deploy:localstack:docker` (metoda B, docker compose) |
 | **production** | AWS, regiunea `eu-central-1` (Frankfurt) | Lambda + DynamoDB + S3 + EventBridge | GitHub Actions, la merge în `master` | `npm run deploy:production` |
 
-Nu există staging și nici alte medii de test. LocalStack ține locul lor: acolo verificați că `template.yaml` și codul merg „ca în AWS”, fără cont AWS și fără costuri.
+Nu există un mediu local separat, nici staging. Scrieți codul și îl verificați direct în LocalStack: aceleași resurse ca în producție, din același `template.yaml`, fără cont AWS și fără costuri. Pe calculatorul vostru nu rulează containere ale aplicației și nu se construiește niciun Dockerfile: singurul container pornit de voi e LocalStack, iar el pornește funcțiile Lambda.
 
 ```
- local                      localstack                     production
- docker compose      →      npm run deploy:localstack  →   PR → merge în master
- (scrieți cod)              (verificați infrastructura)    (GitHub Actions face deploy)
+ localstack                                  production
+ npm run deploy:localstack[:docker]    →     PR → merge în master
+ (scrieți și verificați codul)               (GitHub Actions face deploy)
 ```
 
-### De ce sunt două moduri de a porni același cod
+### Ce diferă între LocalStack și producție
 
-| | local (`docker compose`) | localstack / production |
+Doar valorile din `samconfig.toml`:
+
+| | localstack | production |
 |---|---|---|
-| API | `server.ts`: Express ascultă pe portul 3000 | `lambda.ts`: Express în Lambda, prin Function URL |
-| Worker | `worker.ts`: buclă la fiecare 10 secunde | `worker-lambda.ts`: pornit de EventBridge o dată pe minut; face câte un pas la fiecare `GpsPollSeconds` (LocalStack 1 s, producție 60 s) |
-| Bază de date | DynamoDB Local (container) | DynamoDB |
-| Frontend | nginx, cu proxy pentru `/api` | bucket S3 cu website; `config.js` conține adresa API-ului |
-| Infrastructura | `compose.yaml` | `template.yaml` (AWS SAM) + `samconfig.toml` |
+| Regiunea | `us-east-1` (emulat) | `eu-central-1` |
+| `GpsPollSeconds` | 1 (o poziție GPS pe secundă) | 60 |
+| `LogLevel` | `debug` | `info` |
+| Comenzile `sam` / `aws` | prin `lstk` (A) sau cu `AWS_ENDPOINT_URL` (B) | direct, cu rolul IAM din GitHub Actions |
 
-Rutele (`app.ts`), accesul la date (`db.ts`) și simularea (`simulation.ts`) sunt aceleași în toate mediile.
+Codul (`app.ts`, `db.ts`, `simulation.ts`, `lambda.ts`, `worker-lambda.ts`) și infrastructura (`template.yaml`) sunt aceleași.
 
 ---
 
@@ -36,68 +36,15 @@ Rutele (`app.ts`), accesul la date (`db.ts`) și simularea (`simulation.ts`) sun
 
 Pașii de instalare pentru Windows și macOS (Git, Docker Desktop, Node.js, AWS CLI, AWS SAM CLI, lstk) și contul LocalStack sunt în [README → Instalare](README.md#instalare).
 
-## 2. Mediul local
-
 ```bash
 git clone https://github.com/strategy/fleet-manager.git
 cd fleet-manager
 git switch localstack
 ```
 
-Windows (cmd):
+## 2. Pornirea LocalStack și primul deploy
 
-```bat
-copy .env.example .env
-```
-
-macOS:
-
-```bash
-cp .env.example .env
-```
-
-```bash
-docker compose up -d --build        # pornește aplicația
-docker compose ps                   # api trebuie să ajungă „healthy”
-docker compose logs -f worker       # pozițiile GPS, live (Ctrl+C iese)
-```
-
-Aplicația e la http://localhost:8080, iar API-ul (Swagger) la http://localhost:3000.
-
-Testele, fără Docker:
-
-```bash
-cd api
-npm ci
-npm run lint
-npm test
-cd ..
-```
-
-## 3. Lucrul pe branch-ul vostru
-
-Nimeni nu lucrează direct pe `master`. Fiecare student are branch-ul lui:
-
-```bash
-git switch master
-git pull                                    # porniți de la ultima versiune
-git switch -c student/popescu-ion           # branch-ul vostru
-```
-
-Scrieți codul, verificați-l local (pasul 2), apoi salvați-l:
-
-```bash
-git status
-git add .
-git commit -m "Adaugă filtrarea vehiculelor după stare"
-git push -u origin student/popescu-ion      # prima dată; apoi doar git push
-```
-
-## 4. Verificare în LocalStack
-
-Înainte de PR, verificați că aplicația merge cu Lambda, DynamoDB și S3, adică așa cum va rula în producție.
-
-LocalStack se poate porni în două feluri, descrise pe larg în [README → LocalStack: două metode](README.md#localstack-două-metode). **Folosiți ori una, ori cealaltă, niciodată pe amândouă deodată.**
+LocalStack se poate porni în două feluri, descrise pe larg în [README → Pornire: două metode](README.md#pornire-două-metode). **Folosiți ori una, ori cealaltă, niciodată pe amândouă deodată.**
 
 Metoda A, cu `lstk` (recomandată):
 
@@ -107,12 +54,14 @@ lstk status                         # LocalStack trebuie să fie pornit
 npm run deploy:localstack           # build + sam deploy + upload frontend
 ```
 
-Metoda B, cu `docker compose` (token-ul în `.env.localstack`):
+Metoda B, cu `docker compose` (token-ul în `.env.localstack`, vezi README):
 
 ```bash
-docker compose --profile localstack up -d localstack
-npm run deploy:localstack:docker
+docker compose up -d                # pornește doar containerul LocalStack
+npm run deploy:localstack:docker    # build + sam deploy + upload frontend
 ```
+
+`compose.yaml` conține un singur serviciu, `localstack`; `docker compose up -d` nu construiește și nu pornește nimic altceva.
 
 La final scriptul afișează adresele:
 
@@ -124,6 +73,8 @@ API (Swagger): http://xxxx.lambda-url.us-east-1.localhost.localstack.cloud:4566/
 
 În LocalStack, worker-ul trimite o poziție GPS pe secundă pentru fiecare mașină aflată în cursă (`GpsPollSeconds=1` în `samconfig.toml`). Imediat după primul deploy, prima poziție poate întârzia până la un minut, până pornește EventBridge worker-ul.
 
+Datele din LocalStack nu se păstrează la oprire. După fiecare pornire a LocalStack, rulați din nou deploy-ul.
+
 Ce face scriptul de deploy (vezi `scripts/deploy.mjs`):
 
 1. `npm run bundle` în `api/`: esbuild pune API-ul și worker-ul în `api/build/` (pachetul Lambda);
@@ -133,7 +84,64 @@ Ce face scriptul de deploy (vezi `scripts/deploy.mjs`):
 
 La metoda A, comenzile `sam` și `aws` rulează prin `lstk` (`lstk sam`, `lstk aws`). La metoda B, rulează direct, cu `AWS_ENDPOINT_URL=http://localhost.localstack.cloud:4566`. Fără una dintre cele două, aceeași comandă ar merge în contul AWS real.
 
-Comenzile utile pentru fiecare metodă (stack, funcții, loguri, tabele) sunt în README, la metoda respectivă.
+## 3. Lucrul pe branch-ul vostru
+
+Nimeni nu lucrează direct pe `master`. Fiecare student are branch-ul lui:
+
+```bash
+git switch master
+git pull                                    # porniți de la ultima versiune
+git switch -c student/popescu-ion           # branch-ul vostru
+```
+
+Ciclul de lucru, cu LocalStack pornit:
+
+1. modificați codul (`api/src`, `frontend/`, `template.yaml` sau `samconfig.toml`);
+2. rulați testele (nu au nevoie de Docker):
+
+   ```bash
+   cd api
+   npm ci
+   npm run lint
+   npm test
+   cd ..
+   ```
+
+3. rulați din nou deploy-ul (`npm run deploy:localstack` sau `npm run deploy:localstack:docker`). `sam deploy` actualizează doar ce s-a schimbat, iar adresele rămân aceleași;
+4. reîncărcați pagina și urmăriți logurile funcției modificate:
+
+   ```bash
+   lstk aws logs tail /aws/lambda/NUMELE_FUNCTIEI --follow     # metoda B: fără lstk, cu AWS_ENDPOINT_URL setat
+   ```
+
+   Numele funcțiilor și ale tabelelor, plus celelalte comenzi utile, sunt în [README → Comenzi către LocalStack](README.md#comenzi-către-localstack).
+
+Când merge, salvați modificarea:
+
+```bash
+git status
+git add .
+git commit -m "Adaugă filtrarea vehiculelor după stare"
+git push -u origin student/popescu-ion      # prima dată; apoi doar git push
+```
+
+## 4. Verificare înainte de Pull Request
+
+Înainte de PR, verificați în LocalStack aceleași lucruri pe care le verifică CI-ul, plus aplicația propriu-zisă:
+
+```bash
+cd api
+npm run lint
+npm test
+npm run bundle
+cd ..
+sam validate --lint                 # template.yaml e corect
+npm run deploy:localstack           # sau deploy:localstack:docker
+```
+
+Apoi, în pagina web: adăugați o mașină, trimiteți-o în cursă și urmăriți pozițiile GPS în tabel și pe hartă. Dacă ați schimbat API-ul, încercați ruta nouă din Swagger (`<adresa API>/docs`).
+
+Un deploy reușit în LocalStack înseamnă că `template.yaml` și codul merg „ca în AWS”. Ce rămâne diferit în producție sunt doar valorile din `samconfig.toml` și drepturile IAM (LocalStack Hobby nu le verifică).
 
 ## 5. Pull Request
 
@@ -268,7 +276,7 @@ Puneți totuși un buget cu alertă în contul AWS (**Billing → Budgets**), de
 | Simptom | Cauză și rezolvare |
 |---|---|
 | `lstk` nu pornește sau cere login | Rulați `lstk` fără argumente pentru login. Docker Desktop trebuie să fie pornit. |
-| `port is already allocated` pe 4566 | LocalStack rulează deja, pornit prin cealaltă metodă. Opriți-l (`lstk stop` sau `docker compose stop localstack`) și folosiți o singură metodă. |
+| `port is already allocated` pe 4566 | LocalStack rulează deja, pornit prin cealaltă metodă. Opriți-l (`lstk stop` sau `docker compose stop`) și folosiți o singură metodă. |
 | Metoda B: LocalStack se oprește imediat după pornire | Lipsește sau e greșit token-ul din `.env.localstack`. Vedeți `docker compose logs localstack`. |
 | `Nu găsesc „sam”` / `„lstk”` sau `sam not found in PATH` | Unealta nu e instalată (pasul 1) sau terminalul a fost deschis înainte de instalare. Redeschideți-l. |
 | `Note: No AWS profile found, run 'lstk setup aws'` | Doar o informare: `lstk aws` merge și fără profil. Opțional, `lstk setup aws` creează un profil AWS pentru LocalStack. |

@@ -1,5 +1,4 @@
 // Intrarea în AWS / LocalStack: Lambda Function URL → serverless-http → aplicația Express.
-// Rutele sunt aceleași ca local; doar pornirea diferă (vezi server.ts).
 import type { IncomingMessage } from "node:http";
 import serverless from "serverless-http";
 import { app } from "./app";

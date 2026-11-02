@@ -43,7 +43,7 @@ if (env === "localstack" && !viaDocker) {
   const running = await fetch(health).then((r) => r.ok, () => false);
   if (!running) {
     console.error(`LocalStack nu răspunde la ${health}.`);
-    console.error("Porniți-l cu: docker compose --profile localstack up -d localstack");
+    console.error("Porniți-l cu: docker compose up -d");
     process.exit(1);
   }
 }

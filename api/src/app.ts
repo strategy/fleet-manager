@@ -1,6 +1,5 @@
-// Aplicația Express, aceeași peste tot:
-// - local (docker compose) o pornește server.ts, cu app.listen;
-// - în AWS / LocalStack o pornește lambda.ts, prin Lambda Function URL.
+// Aplicația Express, aceeași în LocalStack și în AWS.
+// O pornește lambda.ts, prin Lambda Function URL.
 import express from "express";
 import { CITIES } from "./cities";
 import * as db from "./db";
