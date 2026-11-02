@@ -4,28 +4,31 @@ Aplicație demo de management al flotei auto, folosită în cursul **Fișiere de
 
 Mașinile sunt adăugate din interfața web și stau în parcarea din Oradea. Trimise în cursă spre o reședință de județ, ele merg în linie dreaptă cu 90 km/h, iar worker-ul trimite pozițiile GPS. Pozițiile se văd în tabel și pe hartă.
 
-> **Fluxul de lucru complet** (local → LocalStack → Pull Request → producție) e în **[DEPLOY.md](DEPLOY.md)**.
+Pe acest branch, **lucrul de zi cu zi se face în LocalStack**, AWS emulat pe calculatorul vostru: aceleași funcții Lambda, aceleași tabele DynamoDB, același bucket S3 ca în producție, fără cont AWS și fără costuri.
 
-## Cele trei medii
+> **Fluxul de lucru complet** (LocalStack → Pull Request → producție) e în **[DEPLOY.md](DEPLOY.md)**.
+
+## Cele două medii
 
 | Mediu | Comanda | Unde |
 |---|---|---|
-| local | `docker compose up -d --build` | http://localhost:8080 |
-| localstack | `npm run deploy:localstack` (metoda A) sau `npm run deploy:localstack:docker` (metoda B) | adresa afișată la final de comandă |
+| local, în LocalStack | `npm run deploy:localstack` (metoda A) sau `npm run deploy:localstack:docker` (metoda B) | adresa afișată la final de comandă |
 | production | merge în `master` (GitHub Actions rulează `npm run deploy:production`) | adresa din GitHub → Deployments |
+
+Ambele medii pornesc din același `template.yaml`; diferă doar valorile din `samconfig.toml`. Ce merge în LocalStack va merge, cu foarte mare probabilitate, și în producție.
 
 ## Instalare
 
 Uneltele de care aveți nevoie:
 
-| Unealtă | La ce folosește | Mediul |
-|---|---|---|
-| Git | codul sursă, branch-uri, Pull Request-uri | toate |
-| Docker Desktop | containerele aplicației; LocalStack rulează tot în Docker | local, localstack |
-| Node.js (22 sau mai nou) | teste, build, scriptul de deploy | toate |
-| AWS CLI | comenzi către AWS / LocalStack | localstack, production |
-| AWS SAM CLI | deploy-ul din `template.yaml` | localstack, production |
-| lstk | pornirea LocalStack (doar **metoda A**) | localstack |
+| Unealtă | La ce folosește |
+|---|---|
+| Git | codul sursă, branch-uri, Pull Request-uri |
+| Docker Desktop | LocalStack rulează în Docker, iar fiecare funcție Lambda într-un container separat |
+| Node.js (22 sau mai nou) | teste, build, scriptul de deploy |
+| AWS CLI | comenzi către LocalStack / AWS |
+| AWS SAM CLI | deploy-ul din `template.yaml` |
+| lstk | pornirea LocalStack (doar **metoda A**) |
 
 ### Windows
 
@@ -101,7 +104,7 @@ lstk --version          # doar dacă folosiți metoda A
 
 ### Cont LocalStack
 
-Din martie 2026, LocalStack cere un cont, indiferent de metodă. Creați-l pe [app.localstack.cloud](https://app.localstack.cloud). Cu GitHub Student Developer Pack primiți planul **Student**; altfel folosiți planul gratuit **Hobby** (uz necomercial).
+Din martie 2026, LocalStack cere un cont, indiferent de metodă. Creați-l pe [app.localstack.cloud](https://app.localstack.cloud). Cu GitHub Student Developer Pack primiți planul **Student**; altfel folosiți planul gratuit **Hobby** (uz necomercial). FleetManager folosește doar servicii incluse în Hobby (Lambda, DynamoDB, S3, EventBridge, CloudFormation).
 
 ### Proiectul
 
@@ -111,7 +114,7 @@ cd fleet-manager
 git switch localstack
 ```
 
-## LocalStack: două metode
+## Pornire: două metode
 
 LocalStack emulează AWS pe calculatorul vostru. Emulatorul e mereu aceeași imagine Docker, [`localstack/localstack`](https://hub.docker.com/r/localstack/localstack); diferă doar cine o pornește.
 
@@ -125,7 +128,7 @@ LocalStack emulează AWS pe calculatorul vostru. Emulatorul e mereu aceeași ima
 
 > ⚠️ **Folosiți ori metoda A, ori metoda B, niciodată pe amândouă deodată.** Ambele pornesc un container LocalStack pe portul 4566. Al doilea nu poate porni, sau comenzile ajung la alt emulator decât credeți. Înainte să schimbați metoda, opriți-o pe cea veche: `lstk stop` pentru A, `docker compose stop localstack` pentru B.
 >
-> Datele din LocalStack nu se păstrează la oprire. După fiecare pornire, rulați din nou deploy-ul.
+> Datele din LocalStack nu se păstrează la oprire: stack-ul, mașinile și pozițiile GPS dispar. După fiecare pornire, rulați din nou deploy-ul.
 
 ### Metoda A: `lstk`
 
@@ -135,13 +138,9 @@ lstk status                         # LocalStack trebuie să fie „running”
 npm run deploy:localstack           # build + sam deploy + frontend în S3
 ```
 
-Comenzi utile:
+Oprire și loguri:
 
 ```bash
-lstk aws cloudformation describe-stacks --stack-name fleet-manager
-lstk aws lambda list-functions --query "Functions[].FunctionName"
-lstk aws logs tail /aws/lambda/NUMELE_FUNCTIEI --follow
-lstk aws dynamodb scan --table-name NUMELE_TABELULUI
 lstk logs                           # logurile LocalStack
 lstk stop                           # oprește LocalStack
 ```
@@ -172,37 +171,7 @@ curl http://localhost:4566/_localstack/health            # serviciile trebuie s�
 npm run deploy:localstack:docker                         # build + sam deploy + frontend în S3
 ```
 
-Serviciul are profilul `localstack`, deci `docker compose up -d` (mediul local) nu îl pornește. Pornește doar când e cerut explicit, ca mai sus.
-
-Comenzile `aws` și `sam` trimit cererile la LocalStack doar cu variabilele de mai jos setate. Fără ele, ajung în contul AWS real.
-
-Windows (cmd):
-
-```bat
-set AWS_ENDPOINT_URL=http://localhost.localstack.cloud:4566
-set AWS_ACCESS_KEY_ID=test
-set AWS_SECRET_ACCESS_KEY=test
-set AWS_DEFAULT_REGION=us-east-1
-aws cloudformation describe-stacks --stack-name fleet-manager
-aws lambda list-functions --query "Functions[].FunctionName"
-aws logs tail /aws/lambda/NUMELE_FUNCTIEI --follow
-aws dynamodb scan --table-name NUMELE_TABELULUI
-```
-
-macOS:
-
-```bash
-export AWS_ENDPOINT_URL=http://localhost.localstack.cloud:4566
-export AWS_ACCESS_KEY_ID=test
-export AWS_SECRET_ACCESS_KEY=test
-export AWS_DEFAULT_REGION=us-east-1
-aws cloudformation describe-stacks --stack-name fleet-manager
-aws lambda list-functions --query "Functions[].FunctionName"
-aws logs tail /aws/lambda/NUMELE_FUNCTIEI --follow
-aws dynamodb scan --table-name NUMELE_TABELULUI
-```
-
-Variabilele rămân setate doar în fereastra de terminal curentă. `npm run deploy:localstack:docker` le setează singur.
+Fără `--profile localstack`, serviciul nu pornește. Comanda de mai sus pornește **doar** containerul LocalStack; aplicația propriu-zisă rulează în LocalStack, ca funcții Lambda.
 
 Oprire și loguri:
 
@@ -211,29 +180,27 @@ docker compose logs -f localstack       # logurile LocalStack
 docker compose stop localstack          # oprește LocalStack
 ```
 
-## Pornire rapidă (local)
+### Adresele aplicației
 
-Cerințe: vezi [Instalare](#instalare).
+La final, comanda de deploy afișează adresele (diferă la fiecare stack nou):
 
-```bash
-cp .env.example .env          # pe Windows: copy .env.example .env
-docker compose up -d --build
-docker compose ps             # api trebuie să ajungă „healthy”
+```
+=== Gata: localstack ===
+Aplicația web: http://fleet-manager-frontendbucket-xxxx.s3-website.localhost.localstack.cloud:4566
+API (Swagger): http://xxxx.lambda-url.us-east-1.localhost.localstack.cloud:4566/docs
 ```
 
 | Adresă | Ce găsiți |
 |---|---|
-| http://localhost:8080 | Interfața web: vehicule, curse, poziții GPS |
-| http://localhost:8080/map.html | Harta flotei în timp real (butonul **Hartă**) |
-| http://localhost:3000 | Documentația API (Swagger UI) |
-| http://localhost:3000/openapi.json | Specificația OpenAPI 3.0 |
-| http://localhost:8000 | DynamoDB Local, doar local (din `compose.override.yaml`) |
+| **Aplicația web** | Interfața: vehicule, curse, poziții GPS |
+| Aplicația web + `/map.html` | Harta flotei în timp real (butonul **Hartă**) |
+| **API (Swagger)** | Documentația API (Swagger UI) |
+| adresa API + `/openapi.json` | Specificația OpenAPI 3.0 |
 
-Oprire:
+Le puteți afișa oricând din nou (metoda A cu `lstk aws`, metoda B cu `aws`, vezi [Comenzi către LocalStack](#comenzi-către-localstack)):
 
 ```bash
-docker compose down       # oprește containerele, datele rămân
-docker compose down -v    # șterge și volumul: flota pornește goală
+lstk aws cloudformation describe-stacks --stack-name fleet-manager --query "Stacks[0].Outputs" --output table
 ```
 
 ## Cum se folosește
@@ -246,18 +213,84 @@ docker compose down -v    # șterge și volumul: flota pornește goală
 | Semn | Stare | Trimite GPS? |
 |---|---|---|
 | albastru **P** | în parcare (Oradea) | nu |
-| portocaliu **➜** | în cursă | da, la fiecare `GPS_POLL_SECONDS`: local 10 s, LocalStack 1 s, producție 60 s |
+| portocaliu **➜** | în cursă | da, la fiecare `GPS_POLL_SECONDS`: LocalStack 1 s, producție 60 s |
 | verde **✓** | a ajuns la destinație | nu |
 
+Imediat după primul deploy, prima poziție GPS poate întârzia până la un minut, până pornește EventBridge worker-ul.
+
+## Comenzi către LocalStack
+
+Aceleași comenzi AWS ca în producție, trimise la LocalStack.
+
+**Metoda A**: puneți `lstk` în fața comenzii (`lstk aws ...`, `lstk sam ...`).
+
+**Metoda B**: comenzile `aws` și `sam` ajung la LocalStack doar cu variabilele de mai jos setate. **Fără ele, ajung în contul AWS real.** Variabilele rămân setate doar în fereastra de terminal curentă; `npm run deploy:localstack:docker` le setează singur.
+
+Windows (cmd):
+
+```bat
+set AWS_ENDPOINT_URL=http://localhost.localstack.cloud:4566
+set AWS_ACCESS_KEY_ID=test
+set AWS_SECRET_ACCESS_KEY=test
+set AWS_DEFAULT_REGION=us-east-1
+```
+
+macOS:
+
+```bash
+export AWS_ENDPOINT_URL=http://localhost.localstack.cloud:4566
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+Comenzile, scrise pentru metoda A. La metoda B, scrieți-le fără `lstk`:
+
+```bash
+# stack-ul și adresele
+lstk aws cloudformation describe-stacks --stack-name fleet-manager --query "Stacks[0].Outputs" --output table
+
+# numele reale ale resurselor (funcții, tabele, bucket)
+lstk aws cloudformation describe-stack-resources --stack-name fleet-manager --query "StackResources[].[LogicalResourceId,PhysicalResourceId]" --output table
+
+# funcțiile Lambda
+lstk aws lambda list-functions --query "Functions[].FunctionName"
+
+# logurile unei funcții, live (Ctrl+C iese); numele îl luați din comanda de mai sus
+lstk aws logs tail /aws/lambda/NUMELE_FUNCTIEI --follow
+
+# conținutul tabelelor (VehiclesTable, PositionsTable)
+lstk aws dynamodb scan --table-name NUMELE_TABELULUI
+
+# fișierele frontend-ului din S3
+lstk aws s3 ls s3://NUMELE_BUCKETULUI
+```
+
+Logurile worker-ului (`WorkerFunction`) arată pozițiile GPS trimise; cele ale `ApiFunction`, cererile primite de API.
+
+### Adaugă un vehicul din terminal
+
+`A` este adresa API afișată la deploy, fără `/docs`.
+
+macOS:
+
+```bash
+A=http://xxxx.lambda-url.us-east-1.localhost.localstack.cloud:4566
+curl -s -X POST $A/api/vehicles -H 'Content-Type: application/json' -d '{"plate":"GPS-1S"}'
+curl -s -X POST $A/api/vehicles/GPS-1S/trip -H 'Content-Type: application/json' -d '{"city":"Cluj-Napoca"}'
+curl -s $A/api/positions
+```
+
+Windows (cmd):
+
+```bat
+set "A=http://xxxx.lambda-url.us-east-1.localhost.localstack.cloud:4566"
+curl -s -X POST %A%/api/vehicles -H "Content-Type: application/json" -d "{\"plate\":\"GPS-1S\"}"
+curl -s -X POST %A%/api/vehicles/GPS-1S/trip -H "Content-Type: application/json" -d "{\"city\":\"Cluj-Napoca\"}"
+curl -s %A%/api/positions
+```
+
 ## Arhitectură
-
-Local (`compose.yaml`):
-
-```
-browser ──► frontend (nginx :8080) ──/api──► api (Express :3000) ──► dynamodb (DynamoDB Local :8000)
-                                                                          ▲
-                                     worker (Node.js, buclă la 10 s) ─────┘
-```
 
 LocalStack și producție (`template.yaml`):
 
@@ -269,20 +302,20 @@ browser ──► S3 website (index.html, map.html, config.js)
                          EventBridge, o dată pe minut ──► WorkerFunction ────────┘
 ```
 
-| Local | AWS / LocalStack | Rol |
+| Resursă (`template.yaml`) | Cod | Rol |
 |---|---|---|
-| `dynamodb` (`amazon/dynamodb-local`) | `VehiclesTable`, `PositionsTable` | Vehiculele și ultimele poziții GPS (expiră după o oră) |
-| `api` (`./api`, `server.ts`) | `ApiFunction` (`lambda.ts`) | REST API + Swagger |
-| `worker` (`./api`, `worker.ts`) | `WorkerFunction` (`worker-lambda.ts`) | Mută mașinile aflate în cursă spre destinație |
-| `frontend` (`./frontend`, nginx) | `FrontendBucket` (S3 website) | Pagina web și harta |
+| `VehiclesTable`, `PositionsTable` | — | Vehiculele și ultimele poziții GPS (expiră după o oră) |
+| `ApiFunction` + Function URL | `lambda.ts` | REST API + Swagger |
+| `WorkerFunction` + regulă EventBridge | `worker-lambda.ts` | Mută mașinile aflate în cursă spre destinație |
+| `FrontendBucket` (S3 website) | `frontend/` | Pagina web și harta |
 
 EventBridge nu poate porni o funcție mai des de o dată pe minut. De aceea `WorkerFunction` face câte un pas la fiecare `GPS_POLL_SECONDS` în minutul respectiv (până la 59 de secunde), apoi se oprește; la 60 de secunde face un singur pas.
 
-Worker-ul calculează distanța din timpul scurs de la ultima poziție. De aceea mașinile merg la fel de repede oricare ar fi intervalul: 10 secunde local, 1 secundă în LocalStack, 60 de secunde în producție.
+Worker-ul calculează distanța din timpul scurs de la ultima poziție. De aceea mașinile merg la fel de repede oricare ar fi intervalul: 1 secundă în LocalStack, 60 de secunde în producție.
 
 ## API
 
-Documentația completă și interactivă e la http://localhost:3000 (local) sau la `<adresa API>/docs` (LocalStack, producție).
+Documentația completă și interactivă e la `<adresa API>/docs`.
 
 | Metodă | Rută | Descriere |
 |---|---|---|
@@ -297,32 +330,19 @@ Documentația completă și interactivă e la http://localhost:3000 (local) sau 
 
 Când adăugați o rută în `api/src/app.ts`, actualizați și `api/src/openapi.ts`.
 
-### API adauga un vehicul din terminal
-
-linux
-```
-A=http://op9xp7e67to56jubo5emv9w3cbfqmgne.lambda-url.us-east-1.localhost.localstack.cloud:4566; curl -s -o /dev/null -XDELETE $A/api/vehicles/GPS-1S; curl -s -XPOST $A/api/vehicles -H 'Content-Type: application/json' -d '{"plate":"GPS-1S"}' >/dev/null;
-```
-
-windows
-```
-set "A=http://op9xp7e67to56jubo5emv9w3cbfqmgne.lambda-url.us-east-1.localhost.localstack.cloud:4566" && curl -s -X POST %A%/api/vehicles -H "Content-Type: application/json" -d "{\"plate\":\"GPS-2S\"}
-```
-
 ## Configurare
 
-Local, valorile vin din `.env` (care nu se comite) și din `compose.yaml`. În LocalStack și producție vin din `template.yaml`, cu valorile pe mediu din `samconfig.toml`.
+Valorile vin din `template.yaml`, cu valorile pe mediu din `samconfig.toml` (secțiunile `[localstack...]` și `[production...]`). În LocalStack nu se folosește `.env`.
 
 | Variabilă | Implicit | Descriere |
 |---|---|---|
-| `LOG_LEVEL` | `info` | Nivelul de log (`debug` local și în LocalStack) |
-| `GPS_POLL_SECONDS` | `10` | La câte secunde trimite worker-ul poziții GPS. Local din `.env`; în LocalStack și producție din parametrul `GpsPollSeconds` din `samconfig.toml` (1 și 60). Pagina web cere date la fel de des, dar măcar o dată la 3 secunde |
+| `LOG_LEVEL` | `info` | Nivelul de log (`debug` în LocalStack) |
+| `GPS_POLL_SECONDS` | `10` | La câte secunde trimite worker-ul poziții GPS: parametrul `GpsPollSeconds` din `samconfig.toml` (1 în LocalStack, 60 în producție). Pagina web cere date la fel de des, dar măcar o dată la 3 secunde |
 | `SPEED_KMH` | `90` | Viteza mașinilor în cursă |
-| `SIM_SPEEDUP` | `1` | Accelerarea simulării: `60` = un minut de demo înseamnă o oră de drum |
-| `DYNAMODB_ENDPOINT` | — | Doar local: adresa DynamoDB Local (`http://dynamodb:8000`) |
-| `VEHICLES_TABLE`, `POSITIONS_TABLE` | `fleet-vehicles`, `fleet-positions` | Numele tabelelor; în AWS le pune `template.yaml` |
+| `SIM_SPEEDUP` | `1` | Accelerarea simulării: `60` = un minut de demo înseamnă o oră de drum (setat 60 în ambele medii) |
+| `VEHICLES_TABLE`, `POSITIONS_TABLE` | `fleet-vehicles`, `fleet-positions` | Numele tabelelor; în AWS și LocalStack le pune `template.yaml` |
 
-`.env.example`, `samconfig.toml` (LocalStack și producție) setează `SIM_SPEEDUP=60` pentru demonstrații.
+O valoare schimbată în `samconfig.toml` ajunge în LocalStack la următorul `npm run deploy:localstack`.
 
 ## Dezvoltare
 
@@ -331,37 +351,49 @@ Codul API-ului și al worker-ului e în TypeScript, în `api/src/`:
 | Fișier | Conținut |
 |---|---|
 | `app.ts` | Rutele REST și Swagger UI (aceleași în toate mediile) |
-| `server.ts` | Pornirea locală: `app.listen` pe portul 3000 |
 | `lambda.ts` | Pornirea în Lambda: Express prin `serverless-http` |
+| `worker-lambda.ts` | Worker-ul Lambda: pașii simulării pe apel |
 | `db.ts` | Accesul la DynamoDB |
 | `simulation.ts` | Un pas al simulării GPS |
-| `worker.ts` | Worker-ul local: rulează simularea în buclă |
-| `worker-lambda.ts` | Worker-ul Lambda: un pas pe apel |
 | `geo.ts` | Distanța (haversine) și pasul în linie dreaptă |
 | `cities.ts` | Reședințele de județ și coordonatele lor |
 | `config.ts` | Citirea variabilelor de mediu |
 | `openapi.ts` | Specificația OpenAPI |
+| `server.ts`, `worker.ts` | Pornirea fără Lambda (vezi [Fără LocalStack](#fără-localstack-docker-compose)) |
 
-Verificare și teste, fără Docker (necesită Node.js):
+Ciclul de lucru:
+
+1. modificați codul (`api/src`, `frontend/`, `template.yaml` sau `samconfig.toml`);
+2. rulați testele, fără Docker:
+
+   ```bash
+   cd api
+   npm ci
+   npm run lint      # verificare de tipuri TypeScript
+   npm test          # testele din *.test.ts
+   cd ..
+   ```
+
+3. rulați din nou deploy-ul: `npm run deploy:localstack` (A) sau `npm run deploy:localstack:docker` (B). `sam deploy` actualizează doar ce s-a schimbat; adresele rămân aceleași cât timp LocalStack nu e oprit;
+4. reîncărcați pagina și urmăriți logurile funcției modificate (`logs tail`, vezi [Comenzi către LocalStack](#comenzi-către-localstack)).
+
+Verificarea șablonului, ca în CI:
 
 ```bash
-cd api
-npm ci
-npm run lint      # verificare de tipuri TypeScript
-npm test          # testele din *.test.ts
-npm run bundle    # pachetul Lambda în api/build/ (esbuild)
+sam validate --lint
 ```
 
-Comenzi utile cu Docker:
+### Fără LocalStack: docker compose
+
+`compose.yaml` are încă serviciile `api`, `worker`, `frontend` și `dynamodb` (DynamoDB Local), pentru cazul în care vreți să rulați codul fără AWS emulat (de exemplu fără cont LocalStack):
 
 ```bash
-docker compose logs -f worker              # pozițiile GPS, live
-docker compose config                      # configurația finală, după .env și override
-docker compose up -d --build api worker    # reconstruiește după modificări în api/
-aws dynamodb scan --table-name fleet-vehicles --endpoint-url http://localhost:8000 --region eu-central-1
+cp .env.example .env          # pe Windows: copy .env.example .env
+docker compose up -d --build  # http://localhost:8080, API pe http://localhost:3000
+docker compose down           # oprire
 ```
 
-Ultima comandă cere credențiale AWS oarecare. Dacă nu aveți, setați `AWS_ACCESS_KEY_ID=local` și `AWS_SECRET_ACCESS_KEY=local`.
+Varianta aceasta nu verifică `template.yaml`, Lambda, S3 sau EventBridge. Înainte de un Pull Request, verificați modificarea în LocalStack.
 
 ## CI/CD
 
@@ -379,27 +411,27 @@ fleet-manager/
 ├── .github/workflows/ci.yml   # GitHub Actions: test la PR, deploy la merge în master
 ├── api/
 │   ├── src/                   # API, worker, teste
-│   ├── Dockerfile             # imaginea locală (docker compose)
+│   ├── Dockerfile             # imaginea pentru docker compose (fără LocalStack)
 │   ├── package.json           # scripturi: lint, test, bundle
 │   └── tsconfig.json
 ├── frontend/
-│   ├── Dockerfile             # nginx + fișiere statice (local)
-│   ├── nginx.conf             # proxy /api → serviciul api
-│   ├── config.js              # adresa API-ului (goală local; rescrisă la deploy)
+│   ├── Dockerfile             # nginx + fișiere statice (docker compose)
+│   ├── nginx.conf             # proxy /api → serviciul api (docker compose)
+│   ├── config.js              # adresa API-ului (rescrisă la deploy)
 │   ├── index.html             # interfața principală
 │   └── map.html               # harta (Leaflet + OpenStreetMap)
 ├── infra/
 │   └── github-oidc.yaml       # rolul IAM pentru GitHub Actions (o singură dată)
 ├── scripts/
-│   └── deploy.mjs             # deploy în localstack sau production
-├── compose.yaml               # mediul local + LocalStack (profil, metoda B)
-├── compose.override.yaml      # ajustări doar pentru local
+│   └── deploy.mjs             # deploy în localstack (metoda A sau B) sau production
 ├── template.yaml              # infrastructura AWS (SAM): Lambda, DynamoDB, S3, EventBridge
 ├── samconfig.toml             # setările pe mediu: localstack, production
-├── package.json               # npm run deploy:localstack / deploy:production
-├── DEPLOY.md                  # fluxul de la local la producție
-├── .env.example               # model pentru .env
+├── package.json               # npm run deploy:localstack[:docker] / deploy:production
+├── compose.yaml               # serviciul localstack (metoda B) + varianta fără LocalStack
+├── compose.override.yaml      # ajustări pentru varianta fără LocalStack
+├── DEPLOY.md                  # fluxul de la LocalStack la producție
 ├── .env.localstack.example    # model pentru .env.localstack (token LocalStack, metoda B)
+├── .env.example               # model pentru .env (doar varianta fără LocalStack)
 └── LICENSE                    # MIT
 ```
 
@@ -407,12 +439,17 @@ fleet-manager/
 
 | Simptom | Cauză și rezolvare |
 |---|---|
-| `port is already allocated` pe 8000 | Alt proces folosește portul. Ștergeți `ports` de la `dynamodb` din `compose.override.yaml`. |
-| Mașinile merg foarte încet | `SIM_SPEEDUP` e 1. Setați-l în `.env` și rulați `docker compose up -d`. |
+| `port is already allocated` pe 4566 | LocalStack rulează deja, pornit prin cealaltă metodă. Opriți-l (`lstk stop` sau `docker compose stop localstack`) și folosiți o singură metodă. |
+| `lstk` nu pornește sau cere login | Rulați `lstk` fără argumente pentru login. Docker Desktop trebuie să fie pornit. |
+| Metoda B: `LocalStack nu răspunde la .../_localstack/health` | Containerul nu e pornit sau token-ul din `.env.localstack` lipsește. Vedeți `docker compose logs localstack`. |
+| Stack-ul `fleet-manager` nu există / pagina nu se mai deschide | LocalStack a fost oprit și datele s-au pierdut. Rulați din nou deploy-ul. |
+| Pagina se încarcă, dar tabelul arată „API indisponibil” | `config.js` nu are adresa API-ului. Rulați din nou deploy-ul și verificați adresa API afișată la final. |
+| Nicio poziție GPS în primul minut | EventBridge pornește worker-ul o dată pe minut. Imediat după deploy, așteptați până la un minut. |
+| Mașinile merg foarte încet | `SimSpeedup` din `samconfig.toml` e 1. Puneți 60 și rulați din nou deploy-ul. |
 | Harta e goală | Harta încarcă Leaflet și imaginile OpenStreetMap de pe internet. |
 | Swagger nu se încarcă | Swagger UI vine de pe `cdn.jsdelivr.net`; e nevoie de internet. |
-| Probleme cu LocalStack sau cu deploy-ul | Vezi [DEPLOY.md → Probleme frecvente](DEPLOY.md#probleme-frecvente). |
-| [ERROR]: 'charmap' codec can't encode character '\u021b' in position 5: character maps to <undefined> | set PYTHONUTF8=1 |
+| `[ERROR]: 'charmap' codec can't encode character 'ț'` (Windows, `sam`) | Rulați `set PYTHONUTF8=1` în cmd, apoi din nou deploy-ul. |
+| Alte probleme cu LocalStack sau cu deploy-ul | Vezi [DEPLOY.md → Probleme frecvente](DEPLOY.md#probleme-frecvente). |
 
 ## Licență
 
