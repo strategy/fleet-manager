@@ -6,3 +6,5 @@ coverage/
 build/
 .aws-sam/
 .env.localstack
+claude-instructions.md
+output.txt

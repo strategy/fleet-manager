@@ -5,6 +5,7 @@
   "scripts": {
     "deploy:localstack": "node scripts/deploy.mjs localstack",
     "deploy:localstack:docker": "node scripts/deploy.mjs localstack --docker",
-    "deploy:production": "node scripts/deploy.mjs production"
+    "deploy:production": "node scripts/deploy.mjs production",
+    "localstack:cleanup": "docker container prune -f --filter label=com.amazonaws.lambda.platform.version"
   }
 }
