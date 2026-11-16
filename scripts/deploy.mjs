@@ -23,6 +23,11 @@ if ((env !== "localstack" && env !== "production") || (viaDocker && env !== "loc
   process.exit(1);
 }
 
+// sam și aws sunt programe Python. Pe Windows, când le citim ieșirea, folosesc cp1252 și cad
+// la diacriticele din template („ă”, „ț”). Le forțăm să scrie UTF-8.
+process.env.PYTHONUTF8 = "1";
+process.env.PYTHONIOENCODING = "utf-8";
+
 // Producție: comenzile sam și aws obișnuite, către AWS.
 let sam = ["sam"];
 let aws = ["aws"];
