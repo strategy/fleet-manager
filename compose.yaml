@@ -1,18 +1,24 @@
-# LocalStack pornit cu Docker Compose, alternativa la `lstk` (metoda B din README).
-# Pornește doar emulatorul AWS; aplicația rulează în el, ca funcții Lambda (npm run deploy:localstack:docker).
-#   docker compose up -d       pornește LocalStack
+# Emulatorul AWS pornit cu Docker Compose, alternativa la `lstk` (metoda B din README).
+# Pornește doar emulatorul; aplicația rulează în el, ca funcții Lambda (npm run deploy:localstack:docker).
+#   docker compose up -d       pornește emulatorul
 #   docker compose stop        îl oprește
 # Folosiți ori lstk, ori acest fișier, niciodată pe amândouă deodată: ambele vor portul 4566.
+#
+# Emulatorul se alege cu variabila AWS_EMULATOR_IMAGE, pusă în .env sau în terminal:
+#   (nesetată)                                       LocalStack, cere token în .env.localstack
+#   AWS_EMULATOR_IMAGE=ministackorg/ministack:full   MiniStack, fără cont și fără token
+# Pentru MiniStack trebuie imaginea :full; cea implicită (:latest) nu știe template-uri SAM.
+# După ce schimbați imaginea: docker compose up -d --force-recreate
 services:
   localstack:
-    image: localstack/localstack:2026.10.1
+    image: ${AWS_EMULATOR_IMAGE:-localstack/localstack:2026.10.1}
     ports:
       - "127.0.0.1:4566:4566"            # toate serviciile AWS emulate
-      - "127.0.0.1:4510-4559:4510-4559"  # porturi folosite de unele servicii
-    # token-ul stă în .env.localstack, care nu se comite
+      - "127.0.0.1:4510-4559:4510-4559"  # porturi folosite de unele servicii LocalStack
+    # token-ul LocalStack stă în .env.localstack, care nu se comite; MiniStack îl ignoră
     env_file:
       - path: .env.localstack
         required: false
     volumes:
-      # LocalStack rulează fiecare funcție Lambda într-un container separat
+      # emulatorul poate rula funcțiile Lambda în containere separate
       - /var/run/docker.sock:/var/run/docker.sock

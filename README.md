@@ -173,6 +173,14 @@ npm run deploy:localstack:docker                         # build + sam deploy + 
 
 `docker compose up -d` pornește **doar** containerul LocalStack: nu construiește imagini și nu pornește alte containere. Aplicația propriu-zisă rulează în LocalStack, ca funcții Lambda.
 
+**Varianta cu MiniStack, fără cont și fără token.** Metoda B merge și cu [MiniStack](https://ministack.org), un emulator compatibil cu LocalStack. Imaginea se alege cu variabila `AWS_EMULATOR_IMAGE`. Adăugați în `.env` linia de mai jos, iar `docker compose` o citește singur:
+
+```bash
+AWS_EMULATOR_IMAGE=ministackorg/ministack:full
+```
+
+Folosiți imaginea `:full`: cea implicită (`:latest`) nu știe să proceseze template-uri SAM. După ce schimbați imaginea, recreați containerul cu `docker compose up -d --force-recreate`. Fără variabilă se folosește LocalStack. Restul pașilor rămân aceiași. Singura diferență: în MiniStack, adresa aplicației web se termină în `/index.html`.
+
 Oprire și loguri:
 
 ```bash

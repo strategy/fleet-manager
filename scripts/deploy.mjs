@@ -28,8 +28,8 @@ let sam = ["sam"];
 let aws = ["aws"];
 if (env === "localstack" && !viaDocker) {
   // Metoda A: lstk trimite aceleași comenzi către LocalStack-ul pornit de el.
-  sam = ["lstk", "sam"];
-  aws = ["lstk", "aws"];
+  sam = ["sam"];
+  aws = ["aws"];
 } else if (viaDocker) {
   // Metoda B: sam și aws obișnuite, redirecționate spre LocalStack prin AWS_ENDPOINT_URL.
   // LocalStack acceptă orice credențiale; le setăm explicit ca să nu se folosească cele de AWS.
@@ -122,7 +122,24 @@ const describe = run(
 );
 // lstk poate afișa o notă înaintea JSON-ului, așa că citim de la primul „[”.
 const outputs = JSON.parse(describe.slice(describe.indexOf("[")));
-const output = (key) => outputs.find((o) => o.OutputKey === key)?.OutputValue;
+let output = (key) => outputs.find((o) => o.OutputKey === key)?.OutputValue;
+if (viaDocker) {
+  // Unele emulatoare (ex. MiniStack) întorc adresele ca pe AWS (*.on.aws, *.amazonaws.com).
+  // Le mutăm pe emulator: același subdomeniu, dar sub domeniul și portul din AWS_ENDPOINT_URL.
+  const endpoint = new URL(process.env.AWS_ENDPOINT_URL);
+  const raw = output;
+  output = (key) => {
+    const value = raw(key);
+    if (!value || !/^https?:\/\//.test(value)) return value;
+    const url = new URL(value);
+    const m = url.hostname.match(/^(.+?)\.(?:on\.aws|amazonaws\.com)$/);
+    if (!m) return value;
+    let local = `${endpoint.protocol}//${m[1].replace(/\.s3-website[.-][^.]+$/, ".s3-website")}.${endpoint.host}${url.pathname}`;
+    // Website-ul S3 din MiniStack nu servește index.html la rădăcină.
+    if (key === "WebsiteUrl" && url.pathname === "/") local = local.replace(/\/$/, "/index.html");
+    return local;
+  };
+}
 const apiUrl = output("ApiUrl").replace(/\/$/, "");
 const bucket = output("FrontendBucketName");
 
