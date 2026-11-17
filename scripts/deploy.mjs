@@ -33,8 +33,8 @@ let sam = ["sam"];
 let aws = ["aws"];
 if (env === "localstack" && !viaDocker) {
   // Metoda A: lstk trimite aceleași comenzi către LocalStack-ul pornit de el.
-  sam = ["sam"];
-  aws = ["aws"];
+  sam = ["lstk", "sam"];
+  aws = ["lstk", "aws"];
 } else if (viaDocker) {
   // Metoda B: sam și aws obișnuite, redirecționate spre LocalStack prin AWS_ENDPOINT_URL.
   // LocalStack acceptă orice credențiale; le setăm explicit ca să nu se folosească cele de AWS.
